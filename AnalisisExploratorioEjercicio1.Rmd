@@ -118,54 +118,5 @@ summary(as.factor(number7Group$pixel269))
 
 \n como se logra observar anteriormente el pixel 269 tiene mas cambios de color, demostrando que efectivamente este pixel si cambia mucho el color de su relleno. De hecho, se observa que este pixel de este numero tiene mas cambios que el pixel 406 del numero 1.
 
-### Redes neuronales 
 
-```{r}
-
-library(keras)
-library(mlbench)
-library(dplyr)
-library(magrittr)
-library(neuralnet)
-str(db)
-#Convert data to numeric
-db[] <- lapply(db, function(x) as.numeric(as.character(x)))
-#Convert factor the label column
-
-
-
-str(db)
-n <- neuralnet(label ~ pixel0+pixel1+pixel2+pixel3+pixel4+pixel5+pixel6+pixel7+pixel8,
-               data = db,
-              hidden = c(12,7),
-
-
-               linear.output = F,
-               lifesign = 'full',
-               rep=1)
-
-plot(n,col.hidden = 'darkgreen',     
-col.hidden.synapse = 'darkgreen',
-     show.weights = F,
-     information = F,
-     fill = 'lightblue')
-
-data <- as.matrix(db)
-dimnames(data) <- NULL
-
-set.seed(123)
-
-training <- data[ind==1,-1]
-test <- data[ind==2, -1]
-
-
-
-m <- colMeans(training)
-s <- apply(training, 2, sd)
-training <- scale(training, center = m, scale = s)
-test <- scale(test, center = m, scale = s)
-
-
-
-```
 
