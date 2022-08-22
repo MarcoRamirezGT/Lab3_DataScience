@@ -11,10 +11,12 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Ejercicio 1: Caracteres manuscritos
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 
 library(ggplot2)
 library(dplyr)
+library(tidyverse)
+
 
 # Read the dataset
 db<-read.csv('train.csv')
@@ -39,7 +41,8 @@ table(db$label)
 
 ggplot(data = db) + geom_histogram(aes(x=label,fill=factor(label)),bins=10, position = "stack",alpha = 0.5)+theme(legend.position="none")+ scale_x_continuous(breaks = seq(0, 100, 1.))
 ```
-Tras observar graficamente vemos que el numero 1 es el que mas filas tiene guardado datos, dando a entender que puede ser el numero mas dificil a predicir por ello es necesario tener mas filas con datos de este,y el siguiente numero es el 7, esto con la idea que estos numeros tienden a confundirse por ello fue necesario mas iteraciones de prueba para posterior almacenar su resultado en este dataset. 
+
+\n Tras observar graficamente vemos que el numero 1 es el que mas filas tiene guardado datos, dando a entender que puede ser el numero mas dificil a predicir por ello es necesario tener mas filas con datos de este,y el siguiente numero es el 7, esto con la idea que estos numeros tienden a confundirse por ello fue necesario mas iteraciones de prueba para posterior almacenar su resultado en este dataset. 
 
 ```{r}
 number1<- subset(db, label == 1)
@@ -50,13 +53,10 @@ dt<-colSums(number1[,-1])
 dtF<-data.frame (pixel  = c(colnames(number1[,-1])),
                   cantidad = c(dt)
                   )
-View(dtF)
 
 dtF2 <- dtF[order(-dtF$cantidad),]
 dtF2<-head(dtF2,n=5)
-library(tidyverse)
 
-View(dtF2)
 
 ggplot(data=dtF2, aes(x=reorder(pixel,cantidad),y=cantidad, fill=pixel)) +
   geom_bar(stat="identity", position=position_dodge())+
@@ -67,5 +67,105 @@ ggplot(data=dtF2, aes(x=reorder(pixel,cantidad),y=cantidad, fill=pixel)) +
 
 ```
 
-Tal como se observa en la grafica anterior, se puede observar que el pixel numero 406 del numero 1 presenta mas cambios de color, o por otro es un pixel que en su mayoria esta pintado o tiene un valor del color. 
+\n Tal como se observa en la grafica anterior, se puede observar que el pixel numero 406 del numero 1 presenta mas cambios de color, o por otro lado es un pixel que en su mayoria esta pintado o tiene un valor del color.
+Analisis del pixel 406
+```{r}
+
+
+
+number1Group<-subset(db,db$label==1)
+summary(as.factor(number1Group$pixel406))
+
+```
+
+\n como se logra observar anteriormente el pixel 406 tiene mas cambios de color, demostrando que efectivamente este pixel si cambia mucho el color de su relleno.
+
+
+```{r}
+number7<- subset(db, label == 7)
+#Save all one's in new dataframe
+dt7<-colSums(number7[,-1])
+
+
+dtF7<-data.frame (pixel  = c(colnames(number7[,-1])),
+                  cantidad = c(dt7)
+                  )
+
+dtF27 <- dtF7[order(-dtF7$cantidad),]
+dtF27<-head(dtF27,n=5)
+
+
+ggplot(data=dtF27, aes(x=reorder(pixel,cantidad),y=cantidad, fill=pixel)) +
+  geom_bar(stat="identity", position=position_dodge())+
+  geom_text(aes(label=cantidad), vjust=1.6, color="black",
+            position = position_dodge(0.9), size=3.5)+
+  labs(title="Suma de valores de cada pixel para el numero 7 ")+
+  theme(legend.position="none")
+
+```
+
+\n Tras obsevar los pixeles del numero 7 se observo que en este caso el pixel con mas color o mas datos es el pixel 269, indicando que a pesar que el numero 1 y 7 se parecen los pixeles con mas color son distintos. 
+
+Analisis del pixel 406
+```{r}
+
+
+
+number7Group<-subset(db,db$label==7)
+summary(as.factor(number7Group$pixel269))
+
+```
+
+\n como se logra observar anteriormente el pixel 269 tiene mas cambios de color, demostrando que efectivamente este pixel si cambia mucho el color de su relleno. De hecho, se observa que este pixel de este numero tiene mas cambios que el pixel 406 del numero 1.
+
+### Redes neuronales 
+
+```{r}
+
+library(keras)
+library(mlbench)
+library(dplyr)
+library(magrittr)
+library(neuralnet)
+str(db)
+#Convert data to numeric
+db[] <- lapply(db, function(x) as.numeric(as.character(x)))
+#Convert factor the label column
+
+
+
+str(db)
+n <- neuralnet(label ~ pixel0+pixel1+pixel2+pixel3+pixel4+pixel5+pixel6+pixel7+pixel8,
+               data = db,
+              hidden = c(12,7),
+
+
+               linear.output = F,
+               lifesign = 'full',
+               rep=1)
+
+plot(n,col.hidden = 'darkgreen',     
+col.hidden.synapse = 'darkgreen',
+     show.weights = F,
+     information = F,
+     fill = 'lightblue')
+
+data <- as.matrix(db)
+dimnames(data) <- NULL
+
+set.seed(123)
+
+training <- data[ind==1,-1]
+test <- data[ind==2, -1]
+
+
+
+m <- colMeans(training)
+s <- apply(training, 2, sd)
+training <- scale(training, center = m, scale = s)
+test <- scale(test, center = m, scale = s)
+
+
+
+```
 
