@@ -1,109 +1,121 @@
 #Librerias
 library("readxl")
-library(tibbletime)
 library(dplyr)
-library(tidyverse)
 library(forecast)
-library(tseries)
-library(fUnitRoots)
-library(ggfortify)
-library(lmtest)
-library(prophet)
-library(zoo)
+library(keras)
+library(tensorflow)
+library(ggplot2)
+library(recipes)
+library(lubridate)
 
 #Leer xls files
-consumo <- read_excel("Consumo.xlsx")
+consumo<-read_excel("Consumo.xlsx")
 
 consumo$Fecha<-as.Date(consumo$Fecha, "%Y/%m/%d")
 str(consumo)
 
-#Series de tiempo
+#Serie de tiempo con LSTM
+#Consumo de Diesel
 fecha<-consumo[,'Fecha']
 diesel<-consumo[,'Diesel alto azufre']
 dieselc<-consumo[c('Fecha','Diesel alto azufre')]
 
-#Diesel
 diesel_ts<-ts(dieselc$`Diesel alto azufre`, start = c(2001,1),frequency = 12)
-start(diesel_ts)
-end(diesel_ts)
-frequency(diesel_ts)
-plot(diesel_ts)
-abline(reg=lm(diesel_ts~time(diesel_ts)), col=c("red"))
-plot(aggregate(diesel_ts,FUN=mean))
-dec.Diesel<-decompose(diesel_ts)
-plot(dec.Diesel)
 
-train<-head(diesel_ts, round(length(diesel_ts) * 0.7))
-h<-length(diesel_ts) - length(train)
-test<-tail(diesel_ts, h)
+#Gráfico de la serie a utilizar
+serie<-diff(diesel_ts) #Quitar esto para ver la predicción sin estacionarizar la serie en media
+plot(serie)
 
-#Aplicaremos una transformación logarítmica
-logDiesel<-log(train)
-plot(decompose(train))
-plot(train)
+#Normalizar la serie
+serie_norm<-scale(serie)
 
-adfTest(train)
-unitrootTest(train)
+#Transformar a una serie supervisada
+lagged<-c(rep(NA,1),serie_norm[1:(length(serie_norm)-1)])
+supervisada<-as.data.frame(cbind(lagged,serie_norm))
+colnames(supervisada)<-c("x-1","x")
+supervisada[is.na(supervisada)]<-0
 
-adfTest(diff(train))
-unitrootTest(diff(train))
+#Cantidad de elementos de cada conjunto
+entrenamiento<-round(0.6*length(serie))
+val_prueba<-round(0.2*length(serie))
 
-#Gráfico de autocorrelación
-acf(logDiesel,50)
-pacf(logDiesel,50)
+#El test son los últimos
+test<-tail(supervisada,val_prueba)
+#Se corta la matriz
+supervisada<-supervisada %>% head(nrow(.)-val_prueba)
+#Se saca el conjunto de validación y se corta nuevamente
+validation<-supervisada %>% tail(val_prueba)
+supervisada<-head(supervisada,nrow(supervisada)-val_prueba)
+#El train son los que quedan
+train<-supervisada
+rm(supervisada)
 
-decTrain<-decompose(train)
-plot(decTrain$seasonal)
+#Division en entrenamiento, prueba y validación
+y_train<-train[,2]
+x_train<-train[,1]
+y_val<-validation[,2]
+x_val<-validation[,1]
+y_test<-test[,2]
+x_test<-test[,1]
 
-acf(diff(logDiesel),36)
-pacf(diff(logDiesel),36)
+#Convertir a matrices
+paso <- 1
+caracteristicas<-1 #es univariada
+dim(x_train) <- c(length(x_train),paso,caracteristicas)
+dim(y_train) <- c(length(y_train),caracteristicas)
+dim(x_test) <- c(length(x_test),paso,caracteristicas)
+dim(y_test) <- c(length(y_test),caracteristicas)
+dim(x_val) <- c(length(x_val),paso,caracteristicas)
+dim(y_val) <- c(length(y_val),caracteristicas)
 
-fitArima<-arima(logDiesel,order=c(2,1,2),seasonal = c(1,1,0))
-fitAutoArima<-auto.arima(train)
+#Creando el modelo
+lote = 1
+unidades<-1
+modelo1<-keras_model_sequential()
+modelo1 %>% 
+  layer_lstm(unidades, batch_input_shape=c(lote,paso,caracteristicas),
+             stateful = T) %>%
+  layer_dense(units = 1)
 
-coeftest(fitArima)
-coeftest(fitAutoArima)
+summary(modelo1)
 
-qqnorm(fitArima$residuals)
-qqline(fitArima$residuals)
-checkresiduals(fitArima)
+#Compilar el modelo
+modelo1 %>%
+  compile(
+    optimizer = "rmsprop",
+    loss = "mse"
+  )
 
-qqnorm(fitAutoArima$residuals)
-qqline(fitAutoArima$residuals)
-checkresiduals(fitAutoArima)
+#Entrenar el modelo
+epocas <- 50
+history <- modelo1 %>% fit(
+  x = x_train,
+  y = y_train,
+  validation_data = list(x_val, y_val),
+  batch_size = lote,
+  epochs = epocas,
+  shuffle = FALSE,
+  verbose = 0
+)
 
-# Hacer el modelo
-auto.arima(diesel_ts)
-fit<-arima(log(diesel_ts), c(0, 1, 1),seasonal = list(order = c(0, 1, 1), period = 12))
-pred<-predict(fit, n.ahead = 3)
-ts.plot(diesel_ts,2.718^pred$pred, log = "y", lty = c(1,3))
-fit2<-arima(log(diesel_ts), c(2, 1, 1),seasonal = list(order = c(0, 1, 0), period = 12))
-forecastAP1<-forecast(fit2, level = c(95), h = 3)
-autoplot(forecastAP1)
+#Graficar el modelo
+plot(history)
 
-diesel_ts2018<-ts( diesel$`Diesel alto azufre`, start = c(2001,1), end=c(2020,12) ,frequency = 12)
-auto.arima(diesel_ts2018)
-fit<-arima(log(diesel_ts2018), c(0, 1, 1),seasonal = list(order = c(0, 1, 1), period = 12))
-pred<-predict(fit, n.ahead = 3)
-ts.plot(diesel_ts2018,2.718^pred$pred, log = "y", lty = c(1,3))
-fit2<-arima(log(diesel_ts2018), c(2, 1, 1),seasonal = list(order = c(0, 1, 0), period = 12))
-forecastAP<-forecast(fit2, level = c(95), h = 3)
+#Evaluar el modelo
+print("Entrenamiento")
+modelo1 %>% evaluate(
+  x = x_train,
+  y = y_train
+)
+print("Validación")
+modelo1 %>% evaluate(
+  x = x_val,
+  y = y_val
+)
+print("Prueba")
+modelo1 %>% evaluate(
+  x = x_test,
+  y = y_test
+)
 
-autoplot(forecastAP)
-
-df<-data.frame(ds=as.Date(as.yearmon(time(train))),y=as.matrix(train) )
-testdf<-data.frame(ds=as.Date(as.yearmon(time(test))),y=as.matrix(test) )
-head(df)
-fitProphet<-prophet(df, yearly.seasonality = TRUE, weekly.seasonality = TRUE)
-future<-make_future_dataframe(fitProphet,periods = h,freq = "month", include_history = T)
-p<-predict(fitProphet,future)
-p<-p[,c("ds","yhat","yhat_lower","yhat_upper")]
-plot(fitProphet,p)
-
-pred<-tail(p,h)
-pred$y<-testdf$y
-
-ggplot(pred, aes(x=ds, y=yhat)) +
-  geom_line(size=1, alpha=0.8) +
-  geom_ribbon(aes(ymin=yhat_lower, ymax=yhat_upper), fill="blue", alpha=0.2) +
-  geom_line(data=pred, aes(x=ds, y=y),color="red")
+#Predicción modelo 1
