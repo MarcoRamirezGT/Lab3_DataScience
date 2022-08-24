@@ -87,7 +87,7 @@ def myMax(list1):
 res = model.predict(imagen_array)
 # array to list
 res = res.tolist()
-res
+print(res)
 for x in range(len(res)):
     res[x] = res[x].index(myMax(res[x]))
     print(res[x])
