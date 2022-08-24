@@ -1,3 +1,5 @@
+from numpy import asarray
+from PIL import Image
 from sklearn.metrics import classification_report, confusion_matrix
 import random
 from tensorflow.python.keras.utils.np_utils import to_categorical
@@ -55,8 +57,39 @@ model.fit_generator(dataGenerator.flow(xTrain, yTrain, batch_size=16),
                     epochs=20)
 
 yPred = model.predict(xTest)
-predict_train = model.predict(xTrain)
 
 
-print(confusion_matrix(yTrain, predict_train))
-print(classification_report(yTrain, predict_train))
+image = Image.open('numero1.jpg')
+new_image = image.resize((28, 28)).convert('L')
+
+data = asarray(new_image)
+
+imagen_array = data.reshape(-1, 28, 28, 1)
+
+
+def myMax(list1):
+
+    # Assume first number in list is largest
+    # initially and assign it to variable "max"
+    max = list1[0]
+ # Now traverse through the list and compare
+    # each number with "max" value. Whichever is
+    # largest assign that value to "max'.
+    for x in list1:
+        if x > max:
+            max = x
+
+    # after complete traversing the list
+    # return the "max" value
+    return max
+
+
+res = model.predict(imagen_array)
+# array to list
+res = res.tolist()
+res
+for x in range(len(res)):
+    res[x] = res[x].index(myMax(res[x]))
+    print(res[x])
+
+print('El numero a predicho es: ', res[x])
