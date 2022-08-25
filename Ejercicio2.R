@@ -1,11 +1,12 @@
 #Librerias
-library("readxl")
-library(dplyr)
-library(forecast)
 library(keras)
 library(tensorflow)
+#install_tensorflow()
+library("readxl")
+library(dplyr)
 library(ggplot2)
 library(recipes)
+library(forecast)
 library(lubridate)
 
 #Leer xls files
@@ -119,3 +120,170 @@ modelo1 %>% evaluate(
 )
 
 #Predicción modelo 1
+prediccion_fun <- function(data,modelo, batch_size,scale,center,dif=F, Series=NULL,n=1){
+  prediccion <- numeric(length(data))
+  if (dif==F){
+    for(i in 1:length(data)){
+      X = data[i]
+      dim(X) = c(1,1,1)
+      yhat = modelo %>% predict(X, batch_size=batch_size)
+      # invert scaling
+      yhat = yhat*scale+center
+      # store
+      prediccion[i] <- yhat
+    }
+  }else{
+    for(i in 1:length(data)){
+      X = data[i]
+      dim(X) = c(1,1,1)
+      yhat = modelo1 %>% predict(X, batch_size=batch_size)
+      # invert scaling
+      yhat = yhat*scale+center
+      # invert differencing
+      yhat  = yhat + Series[(n+i)]
+      # store
+      prediccion[i] <- yhat
+    }
+  }
+  
+  return(prediccion)
+}
+
+prediccion_val <- prediccion_fun(x_val,modelo1,1,attr(serie_norm,"scaled:scale"),
+                                 attr(serie_norm,"scaled:center"),dif=T,diesel_ts,entrenamiento              
+)
+prediccion_test <- prediccion_fun(x_test,modelo1,1,attr(serie_norm,"scaled:scale"),
+                                  attr(serie_norm,"scaled:center"),dif=T,diesel_ts,entrenamiento+val_prueba               
+)
+
+#Gráfica de la predicción
+serie<-diesel_ts
+serie_test<- tail(serie,val_prueba)
+serie<-head(serie,length(serie)-val_prueba)
+serie_val<-tail(serie,val_prueba)
+serie<-head(serie,length(serie)-val_prueba)
+serie_train <- serie
+
+
+df_serie_total<-data.frame(pass=as.matrix(diesel_ts), date=zoo::as.Date(time(diesel_ts)))
+df_serie_val<-data.frame(pass=prediccion_val, date=zoo::as.Date(time(serie_val)))
+df_serie_test<-data.frame(pass=prediccion_test, date=zoo::as.Date(time(serie_test)))
+
+
+df_serie_total$class <- 'real'
+df_serie_val$class <- 'validacion'
+df_serie_test$class <- 'prueba'
+
+df_serie<-rbind(df_serie_total, df_serie_val,df_serie_test)
+df_serie$class<-factor(df_serie$class,levels = c('real','validacion','prueba'))
+ggplot(df_serie,aes(x = date, y = pass, colour = class)) +
+  geom_line()
+
+#Modelo 2 (más complejo)
+# Capa lstm 1 
+unit_lstm1 <- 64
+dropout_lstm1 <- 0.01
+recurrent_dropout_lstm1 <- 0.01
+
+# capa lstm 2 settings
+unit_lstm2 <- 32
+dropout_lstm2 <- 0.01
+recurrent_dropout_lstm2 <- 0.01
+
+timesteps=1
+
+
+# initiate model sequence
+modelo2 <- keras_model_sequential()
+
+modelo2 %>%
+  
+  # lstm1
+  layer_lstm(
+    name = "lstm1",
+    units = unit_lstm1,
+    input_shape = c(timesteps, 1),
+    dropout = dropout_lstm1,
+    recurrent_dropout = recurrent_dropout_lstm1,
+    return_sequences = TRUE
+  ) %>%
+  
+  # lstm2
+  layer_lstm(
+    name = "lstm2",
+    units = unit_lstm2,
+    dropout = dropout_lstm2,
+    recurrent_dropout = recurrent_dropout_lstm2,
+    return_sequences = FALSE
+  ) %>%
+  
+  
+  # output layer
+  layer_dense(
+    name = "output",
+    units = 1
+  )
+
+
+# compile the model
+modelo2 %>%
+  compile(
+    optimizer = "rmsprop",
+    loss = "mse"
+  )
+
+# model summary
+summary(modelo2)
+
+#Entrenamos el modelo 2
+epocas <- 50
+history <- modelo2 %>% fit(
+  x = x_train,
+  y = y_train,
+  validation_data = list(x_val, y_val),
+  batch_size = lote,
+  epochs = epocas,
+  shuffle = FALSE,
+  verbose = 0
+)
+
+#Evaluamos el modelo 2
+#Entrenamiento
+modelo2 %>% evaluate(
+  x = x_train,
+  y = y_train
+)
+
+#Validacion 
+modelo2 %>% evaluate(
+  x = x_val,
+  y = y_val
+)
+
+#Prueba
+modelo2 %>% evaluate(
+  x = x_test,
+  y = y_test
+)
+
+#Predicción modelo 2
+prediccion_val_2 <- prediccion_fun(x_val,modelo2,1,attr(serie_norm,"scaled:scale"),
+                                   attr(serie_norm,"scaled:center"),dif=T,diesel_ts,entrenamiento              
+)
+prediccion_test_2 <- prediccion_fun(x_test,modelo2,1,attr(serie_norm,"scaled:scale"),
+                                    attr(serie_norm,"scaled:center"),dif=T,diesel_ts,entrenamiento+val_prueba               
+)
+
+#Gráfica de la predicción
+df_serie_val_2<-data.frame(pass=prediccion_val_2, date=zoo::as.Date(time(serie_val)))
+df_serie_test_2<-data.frame(pass=prediccion_test_2, date=zoo::as.Date(time(serie_test)))
+
+
+df_serie_total$class <- 'real'
+df_serie_val_2$class <- 'validacion'
+df_serie_test_2$class <- 'prueba'
+
+df_serie_2<-rbind(df_serie_total, df_serie_val_2,df_serie_test_2)
+df_serie$class<-factor(df_serie_2$class,levels = c('real','validacion','prueba'))
+ggplot(df_serie,aes(x = date, y = pass, colour = class)) +
+  geom_line()
